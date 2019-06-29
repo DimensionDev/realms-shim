@@ -92,7 +92,7 @@ function rejectSomeDirectEvalExpressions(s) {
 }
 
 export function rejectDangerousSources(s) {
-  rejectHtmlComments(s);
-  rejectImportExpressions(s);
+  // rejectHtmlComments(s);
+  // rejectImportExpressions(s);
   rejectSomeDirectEvalExpressions(s);
 }
