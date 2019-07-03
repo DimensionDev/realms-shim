@@ -8,7 +8,11 @@ import { throwTantrum } from './utilities';
  */
 const alwaysThrowHandler = new Proxy(freeze({}), {
   get(target, prop) {
-    throwTantrum(`unexpected scope handler trap called: ${prop}`);
+    console.warn(
+      `unexpected scope handler trap called: ${prop}`,
+      new Error().stack
+    );
+    // throwTantrum(`unexpected scope handler trap called: ${prop}`);
   }
 });
 
