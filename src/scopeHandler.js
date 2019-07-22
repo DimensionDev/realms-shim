@@ -8,7 +8,11 @@ import { throwTantrum } from './utilities';
  */
 const alwaysThrowHandler = new Proxy(freeze({}), {
   get(target, prop) {
-    throwTantrum(`unexpected scope handler trap called: ${prop}`);
+    console.warn(
+      `unexpected scope handler trap called: ${prop}`,
+      new Error().stack
+    );
+    // throwTantrum(`unexpected scope handler trap called: ${prop}`);
   }
 });
 
@@ -32,6 +36,9 @@ export function createScopeHandler(unsafeRec, safeGlobal) {
   // This flag allow us to determine if the eval() call is an done by the
   // realm's code or if it is user-land invocation, so we can react differently.
   let useUnsafeEvaluator = false;
+  // This flag allow us to allow undefined assignments in non-strict mode.
+  // When the counter count down to 4, we allow it once;
+  let allowNonStrictModeAssignmentTimes = 0;
 
   return {
     // The scope handler throws if any trap other than get/set/has are run
@@ -41,6 +48,21 @@ export function createScopeHandler(unsafeRec, safeGlobal) {
 
     allowUnsafeEvaluatorOnce() {
       useUnsafeEvaluator = true;
+    },
+
+    nonStrictModeAssignmentAllowed() {
+      return allowNonStrictModeAssignmentTimes === 3;
+    },
+
+    allowNonStrictModeAssignment(times = 1) {
+      allowNonStrictModeAssignmentTimes = times;
+    },
+
+    hasNonStrictModeAssigned() {
+      allowNonStrictModeAssignmentTimes = Math.max(
+        0,
+        allowNonStrictModeAssignmentTimes - 1
+      );
     },
 
     unsafeEvaluatorAllowed() {
@@ -117,6 +139,9 @@ export function createScopeHandler(unsafeRec, safeGlobal) {
     // ReferenceError for such assignments)
 
     has(target, prop) {
+      if (this.nonStrictModeAssignmentAllowed()) {
+        return true;
+      }
       // proxies stringify 'prop', so no TOCTTOU danger here
 
       // unsafeGlobal: hide all properties of unsafeGlobal at the

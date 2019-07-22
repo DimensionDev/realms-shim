@@ -78,7 +78,7 @@ export function createSafeEvaluatorFactory(unsafeRec, safeGlobal) {
     constants
   );
 
-  function factory(endowments = {}) {
+  function factory(endowments = {}, nonStrict = false) {
     // todo (shim limitation): scan endowments, throw error if endowment
     // overlaps with the const optimization (which would otherwise
     // incorrectly shadow endowments), or if endowments includes 'eval'. Also
@@ -105,6 +105,9 @@ export function createSafeEvaluatorFactory(unsafeRec, safeGlobal) {
         src = `${src}`;
         rejectDangerousSources(src);
         scopeHandler.allowUnsafeEvaluatorOnce();
+        if (nonStrict && !scopeHandler.nonStrictModeAssignmentAllowed()) {
+          scopeHandler.allowNonStrictModeAssignment(5);
+        }
         let err;
         try {
           // Ensure that "this" resolves to the safe global.
@@ -114,6 +117,7 @@ export function createSafeEvaluatorFactory(unsafeRec, safeGlobal) {
           err = e;
           throw e;
         } finally {
+          scopeHandler.hasNonStrictModeAssigned();
           // belt and suspenders: the proxy switches this off immediately after
           // the first access, but if that's not the case we abort.
           if (scopeHandler.unsafeEvaluatorAllowed()) {
@@ -171,8 +175,15 @@ export function createSafeEvaluatorWhichTakesEndowments(safeEvaluatorFactory) {
  * A safe version of the native Function which relies on
  * the safety of evalEvaluator for confinement.
  */
-export function createFunctionEvaluator(unsafeRec, safeEval, realmGlobal) {
+export function createFunctionEvaluator(
+  unsafeRec,
+  safeEvalFactory,
+  realmGlobal
+) {
   const { unsafeFunction, unsafeGlobal } = unsafeRec;
+
+  const safeEvalStrict = safeEvalFactory(undefined, false);
+  const safeEvalNonStrict = safeEvalFactory(undefined, true);
 
   const safeFunction = function Function(...params) {
     const functionBody = `${arrayPop(params) || ''}`;
@@ -229,7 +240,10 @@ export function createFunctionEvaluator(unsafeRec, safeEval, realmGlobal) {
 
     const src = `(function(${functionParams}){\n${functionBody}\n})`;
     const isStrict = !!/^\s*['|"]use strict['|"]/.exec(functionBody);
-    const fn = safeEval(src);
+    if (isStrict) {
+      return safeEvalStrict(src);
+    }
+    const fn = safeEvalNonStrict(src);
     if (isStrict) {
       return fn;
     }
@@ -241,7 +255,7 @@ export function createFunctionEvaluator(unsafeRec, safeEval, realmGlobal) {
   f2.toString = () => f.toString();
   return f2;
 })`;
-    const fnWithThis = safeEval(bindThis)(realmGlobal, fn);
+    const fnWithThis = safeEvalStrict(bindThis)(realmGlobal, fn);
     return fnWithThis;
   };
 
@@ -267,7 +281,7 @@ export function createFunctionEvaluator(unsafeRec, safeEval, realmGlobal) {
     // Function.prototype.toString which is called by some third-party
     // libraries.
     toString: {
-      value: safeEval("() => 'function Function() { [shim code] }'"),
+      value: safeEvalStrict("() => 'function Function() { [shim code] }'"),
       writable: false,
       enumerable: false,
       configurable: true
